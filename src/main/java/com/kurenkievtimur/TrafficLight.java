@@ -1,21 +1,26 @@
 package com.kurenkievtimur;
 
-import java.io.IOException;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
+import static com.kurenkievtimur.Console.clearConsole;
 import static com.kurenkievtimur.TrafficLightState.*;
 
 public class TrafficLight {
-    private int roads;
+    private int size;
     private int interval;
     private TrafficLightState state = NOT_STARTED;
-    private ArrayBlockingQueue<String> queue;
+    private BlockingQueue<Road> roads;
+    private BlockingQueue<Road> activeRoads;
 
     private void setup(Scanner scanner) {
         System.out.println("Welcome to the traffic management system!");
         inputRoads(scanner);
-        queue = new ArrayBlockingQueue<>(roads);
+        roads = new ArrayBlockingQueue<>(size);
+        activeRoads = new ArrayBlockingQueue<>(size);
 
         inputInterval(scanner);
 
@@ -54,7 +59,7 @@ public class TrafficLight {
             if (!isValidRoads)
                 System.out.print("Error! Incorrect Input. Try again: ");
             else
-                this.roads = roads;
+                this.size = roads;
         }
     }
 
@@ -88,8 +93,16 @@ public class TrafficLight {
         System.out.println("0. Quit");
 
         switch (scanner.nextLine()) {
-            case "1" -> addRoad(scanner);
-            case "2" -> deleteRoad(scanner);
+            case "1" -> {
+                state = ADD_ROAD;
+                addRoad(scanner);
+                state = MENU;
+            }
+            case "2" -> {
+                state = DELETE_ROAD;
+                deleteRoad(scanner);
+                state = MENU;
+            }
             case "3" -> {
                 state = SYSTEM;
                 if (scanner.hasNextLine()) {
@@ -117,41 +130,60 @@ public class TrafficLight {
         return true;
     }
 
-    private void clearConsole() {
-        try {
-            var clearCommand = System.getProperty("os.name").contains("Windows")
-                    ? new ProcessBuilder("cmd", "/c", "cls")
-                    : new ProcessBuilder("clear");
-            clearCommand.inheritIO().start().waitFor();
-        } catch (IOException | InterruptedException ignored) {}
-    }
-
     private void addRoad(Scanner scanner) {
         System.out.print("Input road name: ");
         String input = scanner.nextLine();
 
-        if (queue.offer(input))
-            System.out.printf("%s added!\n", input);
-        else
+        try {
+            Road activeRoad = activeRoads.peek();
+
+            Road road;
+            if (activeRoads.size() == 0) {
+                road = new Road(input, interval, true);
+            } else {
+                int seconds = activeRoads.size() * interval - Math.abs(activeRoad.getSeconds() - interval);
+                road = new Road(input, seconds, false);
+            }
+
+            if (roads.add(road)) {
+                activeRoads.add(road);
+                System.out.printf("%s added!\n", input);
+            }
+        } catch (IllegalStateException ignored) {
             System.out.println("Queue is full");
+        }
 
         if (scanner.hasNextLine())
             scanner.nextLine();
     }
 
     private void deleteRoad(Scanner scanner) {
-        String element = queue.poll();
-        if (element != null)
-            System.out.printf("%s deleted!\n", element);
-        else
+        try {
+            Road road = roads.remove();
+
+            Iterator<Road> iterator = activeRoads.iterator();
+            int index = 0;
+            while (iterator.hasNext()) {
+                Road next = iterator.next();
+
+                if (index >= 2 && road.isOpen())
+                    next.setSeconds(next.getSeconds() - 3);
+
+                index++;
+            }
+
+            if (activeRoads.remove(road))
+                System.out.printf("%s deleted!\n", road.getName());
+        } catch (NoSuchElementException ignored) {
             System.out.println("Queue is empty");
+        }
 
         if (scanner.hasNextLine())
             scanner.nextLine();
     }
 
-    public int getRoads() {
-        return roads;
+    public int getSize() {
+        return size;
     }
 
     public int getInterval() {
@@ -162,7 +194,11 @@ public class TrafficLight {
         return state;
     }
 
-    public ArrayBlockingQueue<String> getQueue() {
-        return queue;
+    public BlockingQueue<Road> getRoads() {
+        return roads;
+    }
+
+    public BlockingQueue<Road> getActiveRoads() {
+        return activeRoads;
     }
 }

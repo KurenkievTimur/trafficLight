@@ -1,9 +1,9 @@
 package com.kurenkievtimur;
 
-import java.io.IOException;
+import java.util.concurrent.BlockingQueue;
 
-import static com.kurenkievtimur.TrafficLightState.EXIT;
-import static com.kurenkievtimur.TrafficLightState.SYSTEM;
+import static com.kurenkievtimur.Console.clearConsole;
+import static com.kurenkievtimur.TrafficLightState.*;
 
 public class Timer extends Thread {
     private int seconds = 0;
@@ -19,38 +19,56 @@ public class Timer extends Thread {
     public void run() {
         while (!trafficLight.getState().equals(EXIT)) {
             try {
-                if (trafficLight.getState().equals(SYSTEM))
-                    printSystemInfo();
-
                 Thread.sleep(1000);
                 seconds++;
 
                 if (trafficLight.getState().equals(SYSTEM))
                     clearConsole();
-            } catch (InterruptedException ignored) {
-            }
+
+                if (trafficLight.getState().equals(SYSTEM))
+                    printSystemInfo();
+
+                if (!trafficLight.getState().equals(ADD_ROAD) && !trafficLight.getState().equals(DELETE_ROAD))
+                    openRoad();
+            } catch (InterruptedException ignored) {}
         }
     }
 
     private void printSystemInfo() {
         System.out.printf("! %ds. have passed since system startup !\n", seconds);
-        System.out.printf("! Number of roads: %d !\n", trafficLight.getRoads());
-        System.out.printf("! Interval: %d !\n", trafficLight.getInterval());
+        System.out.printf("! Number of roads: %d !\n", trafficLight.getSize());
+        System.out.printf("! Interval: %d !\n\n", trafficLight.getInterval());
 
-        for (String element : trafficLight.getQueue()) {
-            System.out.println(element);
+        for (Road road : trafficLight.getRoads()) {
+            System.out.printf("%s will be %s for %ds.\u001B[0m\n", road.getName(), road.isOpen() ? "\u001B[32mopened" :
+                    "\u001B[31mclosed", road.getSeconds());
         }
 
-        System.out.println("Press \"Enter\" to open menu!");
+        System.out.println("\nPress \"Enter\" to open menu!");
     }
 
-    private void clearConsole() {
-        try {
-            var clearCommand = System.getProperty("os.name").contains("Windows")
-                    ? new ProcessBuilder("cmd", "/c", "cls")
-                    : new ProcessBuilder("clear");
-            clearCommand.inheritIO().start().waitFor();
-        } catch (IOException | InterruptedException ignored) {
+    private void openRoad() {
+        BlockingQueue<Road> roads = trafficLight.getActiveRoads();
+        int interval = trafficLight.getInterval();
+
+        for (Road road : roads) {
+            if (road.getSeconds() == 1) {
+                roads.poll();
+                road.setOpen(false);
+                road.setSeconds(roads.size() <= 1 ? interval + 1 : interval * roads.size() + 1);
+                roads.add(road);
+
+                Road open = roads.peek();
+                open.setOpen(true);
+                open.setSeconds(interval + 1);
+
+                break;
+            }
+        }
+
+        for (Road road : roads) {
+            int seconds = road.getSeconds();
+            road.setSeconds(seconds == 1 ? seconds : seconds - 1);
         }
     }
 }
